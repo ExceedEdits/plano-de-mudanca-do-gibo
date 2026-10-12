@@ -1,4 +1,4 @@
-# Para onde eu vou? — Quiz da Mudança
+# Plano de Mudança do Gibo
 
 Slides interativos em HTML puro (sem build) para decidir cidade, vizinhança, tipo de moradia, cômodos e planta do próximo imóvel alugado.
 
@@ -14,6 +14,8 @@ Abra http://localhost:8765. Abrir o `index.html` direto pelo arquivo também fun
 
 1. Suba `index.html` e a pasta `src/` para a raiz do repositório.
 2. Em **Settings → Pages**, escolha *Deploy from a branch*, branch `main`, pasta `/ (root)`.
+
+Site publicado: https://exceededits.github.io/plano-de-mudanca-do-gibo/
 
 ## Navegação
 
