@@ -1,0 +1,277 @@
+<title>Painel de Imagens do Quiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: ferramenta de bancada. Barra de filtros fixa, lista de "espaços" do quiz, cada um com a foto atual à esquerda e as alternativas à direita. */
+:root{
+  --bg:#f6f1ea; --surface:#fffdf9; --surface-2:#efe7dc; --line:#e2d6c6;
+  --fg:#2a211a; --muted:#6f6154; --dim:#9a8b7c;
+  --accent:#c56a1c; --accent-ink:#fff8ef; --accent-soft:#f7e3cc;
+  --ok:#2f7d55; --warn:#b4541a; --warn-soft:#fbe4d3;
+  --font-display:"Fraunces", Georgia, serif;
+  --font-body:"Manrope", system-ui, sans-serif;
+  --font-mono:"JetBrains Mono", ui-monospace, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15110e; --surface:#1e1915; --surface-2:#2a231d; --line:#3a3028;
+    --fg:#f2e9de; --muted:#b3a597; --dim:#7f7266;
+    --accent:#f2a65a; --accent-ink:#1b120a; --accent-soft:#3a2816;
+    --ok:#7fd1a3; --warn:#ff9b6b; --warn-soft:#3a2016;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15110e; --surface:#1e1915; --surface-2:#2a231d; --line:#3a3028;
+  --fg:#f2e9de; --muted:#b3a597; --dim:#7f7266;
+  --accent:#f2a65a; --accent-ink:#1b120a; --accent-soft:#3a2816;
+  --ok:#7fd1a3; --warn:#ff9b6b; --warn-soft:#3a2016;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14.5px;line-height:1.5;margin:0;padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:1180px;margin:0 auto}
+h1,h2,h3{text-wrap:balance;margin:0}
+a{color:var(--accent)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{padding-block:32px 18px;display:grid;gap:10px}
+.eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:var(--font-display);font-weight:700;font-size:clamp(28px,4vw,40px);letter-spacing:-.01em}
+.intro{color:var(--muted);max-width:68ch}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.stat{display:inline-flex;align-items:baseline;gap:6px;padding:6px 12px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.stat b{font-variant-numeric:tabular-nums;color:var(--fg);font-size:15px}
+.stat.warn b{color:var(--warn)}
+
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.tab{border:1px solid var(--line);background:var(--surface);padding:6px 12px;border-radius:99px;font-size:13px;font-weight:600;color:var(--muted)}
+.tab[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.tab .n{font-variant-numeric:tabular-nums;opacity:.7;margin-left:4px;font-weight:500}
+.bar .spacer{flex:1}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:10px;font-weight:600;font-size:13px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.notice{margin-top:16px;padding:14px 16px;border-radius:12px;background:var(--warn-soft);color:var(--fg);border:1px solid var(--line)}
+.empty{margin-top:28px;padding:32px;border-radius:16px;border:1px dashed var(--line);text-align:center;color:var(--muted)}
+
+.group-title{font-family:var(--font-display);font-size:22px;font-weight:600;margin:30px 0 12px;display:flex;align-items:baseline;gap:10px}
+.group-title small{font-family:var(--font-body);font-size:12.5px;color:var(--dim);font-weight:500}
+
+.slot{display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;padding:18px;border-radius:16px;background:var(--surface);border:1px solid var(--line);margin-bottom:12px}
+.slot.review{border-color:var(--warn);box-shadow:inset 4px 0 0 var(--warn)}
+.cur{display:grid;gap:8px;align-content:start;min-width:0}
+.slot-id{font-family:var(--font-mono);font-size:12px;color:var(--dim)}
+.cur h3{font-family:var(--font-display);font-size:18px;font-weight:600;line-height:1.2}
+.thumb{aspect-ratio:4/3;max-width:100%;border-radius:10px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:grid;place-items:center;text-align:center}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb.remote{padding:12px;gap:4px;align-content:center;font-size:12.5px;color:var(--muted)}
+.thumb.remote .host{font-family:var(--font-mono);font-size:11.5px;color:var(--dim);word-break:break-all}
+.note{font-size:12.5px;color:var(--muted);background:var(--surface-2);padding:8px 10px;border-radius:8px}
+.row-actions{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:11.5px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted);background:var(--surface)}
+.chip.src{color:var(--ok)}
+.chip.ext{color:var(--accent)}
+
+.opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;align-content:start;min-width:0}
+.opt{position:relative;text-align:left;display:grid;gap:6px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);min-width:0}
+.opt[aria-checked="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.opt .radio{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;background:none;border:0;padding:0;text-align:left}
+.opt .dot{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--dim);display:grid;place-items:center}
+.opt[aria-checked="true"] .dot{border-color:var(--accent)}
+.opt[aria-checked="true"] .dot::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.opt p{margin:0;font-size:12.5px;color:var(--muted)}
+.opt .meta{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px}
+.opt .credit{font-size:11.5px;color:var(--dim)}
+.opt .mini{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;display:block;max-width:100%}
+.real{font-size:11px;color:var(--dim);letter-spacing:.04em}
+.real i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--line);margin-left:3px}
+.real i.on{background:var(--accent)}
+
+details.add{grid-column:1/-1;border-top:1px dashed var(--line);padding-top:10px}
+details.add summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+.add form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:10px}
+.add label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.add input,.add textarea{font:inherit;font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);min-width:0}
+.add .full{grid-column:1/-1}
+
+.export{margin-top:36px;padding:20px;border-radius:16px;background:var(--surface);border:1px solid var(--line);display:grid;gap:12px}
+.export h2{font-family:var(--font-display);font-size:22px;font-weight:600}
+.export p{margin:0;color:var(--muted)}
+.export pre{margin:0;max-height:320px;overflow:auto;padding:14px;border-radius:10px;background:var(--surface-2);font-family:var(--font-mono);font-size:12px;line-height:1.55;white-space:pre}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none}
+.toast.show{opacity:1}
+
+@media (max-width:760px){
+  .slot{grid-template-columns:1fr}
+  .thumb{max-width:320px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Para onde eu vou? · manutenção</div>
+    <h1>Painel de Imagens do Quiz</h1>
+    <p class="intro">Cada bloco é um espaço da apresentação. Marque a foto que deve aparecer, adicione links novos e, quando terminar, copie o <code>images.js</code> gerado no fim da página para o repositório (ou peça ao Claude para aplicar). Fotos externas aparecem como link porque o painel não carrega imagens de outros sites.</p>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <div class="bar">
+    <div class="tabs" id="tabs" role="toolbar" aria-label="Filtrar por grupo"></div>
+    <span class="spacer"></span>
+    <label class="check"><input type="checkbox" id="onlyReview"> Só os marcados para revisar</label>
+  </div>
+
+  <div id="notice"></div>
+  <main id="list"><div class="empty">Carregando os espaços do quiz…</div></main>
+
+  <section class="export" aria-labelledby="exp-title">
+    <h2 id="exp-title">images.js gerado</h2>
+    <p>Este arquivo substitui o <code>images.js</code> na raiz do projeto. Ele reflete as escolhas marcadas acima.</p>
+    <div><button class="btn primary" id="copy">Copiar images.js</button></div>
+    <pre id="code" tabindex="0">// aguardando os dados do painel</pre>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const GROUPS = ["Cidade","Vizinhança","Moradia","Studio","Sala","Quarto","Cozinha","Banheiro"];
+let slots = [], filter = "Todos", db = null, canWrite = true;
+let toastT;
+function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),1800); }
+try { filter = localStorage.getItem("painel-filtro") || "Todos"; } catch(e) {}
+
+const isLocal = src => src && src.startsWith("src/");
+const host = src => { try { return new URL(src).hostname; } catch(e) { return src; } };
+const realDots = n => `<span class="real">realismo${[1,2,3].map(i=>`<i class="${i<=n?"on":""}"></i>`).join("")}</span>`;
+
+function thumbHTML(o){
+  if(!o) return `<div class="thumb remote">Sem imagem</div>`;
+  if(isLocal(o.src)) return `<div class="thumb"><img src="${esc(o.src)}" alt="${esc(o.label)}" loading="lazy"></div>`;
+  return `<div class="thumb remote"><strong>Foto externa</strong><span class="host">${esc(host(o.src))}</span><a href="${esc(o.src)}" target="_blank" rel="noopener">Abrir imagem ↗</a></div>`;
+}
+
+function render(){
+  const total = slots.length;
+  const withAlt = slots.filter(s=>s.options.length>1).length;
+  const review = slots.filter(s=>s.review).length;
+  const ext = slots.filter(s=>!isLocal(s.options[s.chosen]?.src)).length;
+  $("#stats").innerHTML = `<span class="stat"><b>${total}</b> espaços</span><span class="stat"><b>${withAlt}</b> com alternativas</span><span class="stat"><b>${ext}</b> usando foto externa</span><span class="stat ${review?"warn":""}"><b>${review}</b> para revisar</span>`;
+
+  const counts = Object.fromEntries(GROUPS.map(g=>[g, slots.filter(s=>s.group===g).length]));
+  $("#tabs").innerHTML = ["Todos",...GROUPS].map(g=>`<button class="tab" data-g="${g}" aria-pressed="${g===filter}">${g}<span class="n">${g==="Todos"?total:counts[g]||0}</span></button>`).join("");
+
+  const only = $("#onlyReview").checked;
+  const shown = slots.filter(s=>(filter==="Todos"||s.group===filter) && (!only||s.review));
+  if(!total){ $("#list").innerHTML = `<div class="empty">Nenhum espaço cadastrado ainda. Peça ao Claude para carregar as imagens do quiz neste painel.</div>`; renderExport(); return; }
+  if(!shown.length){ $("#list").innerHTML = `<div class="empty">Nada neste filtro.</div>`; renderExport(); return; }
+
+  let html = "", lastGroup = null;
+  for(const s of shown){
+    if(s.group!==lastGroup){ lastGroup=s.group; html += `<h2 class="group-title">${esc(s.group)} <small>${counts[s.group]} espaço(s)</small></h2>`; }
+    const cur = s.options[s.chosen];
+    html += `<article class="slot ${s.review?"review":""}" data-id="${esc(s.id)}">
+      <div class="cur">
+        <span class="slot-id">${esc(s.id)}</span>
+        <h3>${esc(cur?.label || "—")}</h3>
+        ${thumbHTML(cur)}
+        <div class="row-actions">
+          <span class="chip ${isLocal(cur?.src)?"src":"ext"}">${isLocal(cur?.src)?"arquivo em src/":"link externo"}</span>
+          <button class="chip" data-act="review" aria-pressed="${!!s.review}">${s.review?"✓ marcado para revisar":"Marcar para revisar"}</button>
+        </div>
+        ${s.note?`<div class="note">${esc(s.note)}</div>`:""}
+      </div>
+      <div class="opts" role="radiogroup" aria-label="Opções para ${esc(s.id)}">
+        ${s.options.map((o,i)=>`
+          <div class="opt" aria-checked="${i===s.chosen}">
+            <button class="radio" role="radio" aria-checked="${i===s.chosen}" data-act="choose" data-i="${i}"><span class="dot"></span>${esc(o.label)}</button>
+            ${isLocal(o.src)?`<img class="mini" src="${esc(o.src)}" alt="" loading="lazy">`:""}
+            ${o.desc?`<p>${esc(o.desc)}</p>`:""}
+            <div class="meta">
+              ${realDots(o.real ?? 2)}
+              ${isLocal(o.src)?`<span class="chip src">${esc(o.src)}</span>`:`<a href="${esc(o.src)}" target="_blank" rel="noopener">Ver imagem ↗</a>`}
+              ${o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Fonte</a>`:""}
+            </div>
+            ${o.credit?`<span class="credit">${esc(o.credit)}</span>`:""}
+          </div>`).join("")}
+        <details class="add">
+          <summary>Adicionar outra opção por link</summary>
+          <form data-act="add">
+            <label>URL da imagem<input name="src" type="url" required placeholder="https://… ou src/arquivo.jpg" id="add-src-${esc(s.id)}"></label>
+            <label>Nome no slide<input name="label" required maxlength="40" id="add-label-${esc(s.id)}"></label>
+            <label>Página de origem (opcional)<input name="link" type="url" id="add-link-${esc(s.id)}"></label>
+            <label>Crédito (opcional)<input name="credit" maxlength="80" id="add-credit-${esc(s.id)}"></label>
+            <label class="full">Descrição curta<textarea name="desc" rows="2" maxlength="160" id="add-desc-${esc(s.id)}"></textarea></label>
+            <div class="full"><button class="btn primary" type="submit">Adicionar opção</button></div>
+          </form>
+        </details>
+      </div>
+    </article>`;
+  }
+  $("#list").innerHTML = html;
+  renderExport();
+}
+
+function buildJS(){
+  const obj = {};
+  [...slots].sort((a,b)=>a.order-b.order).forEach(s=>{ const o=s.options[s.chosen]; if(o) obj[s.id]={src:o.src,label:o.label,desc:o.desc||"",real:o.real??2,credit:o.credit||"",link:o.link||""}; });
+  return "// Imagens do quiz: cada chave é um espaço da apresentação.\n// Gerado pelo Painel de Imagens; para trocar uma foto, edite aqui ou exporte de novo pelo painel.\nwindow.QUIZ_IMAGES = " + JSON.stringify(obj, null, 2) + ";\n";
+}
+function renderExport(){ $("#code").textContent = slots.length ? buildJS() : "// sem dados"; }
+
+async function write(id, patch, okMsg){
+  if(!db || !canWrite){ toast("Só quem pode editar este painel consegue salvar."); return; }
+  try { await db.doc("slots/"+id).update(patch); if(okMsg) toast(okMsg); }
+  catch(e){
+    if(e?.code==="invalid_argument"){ canWrite=false; toast("Você só tem acesso de leitura a este painel."); }
+    else toast("Não foi possível salvar agora. Tente de novo em instantes.");
+  }
+}
+
+document.addEventListener("click", e=>{
+  const tab = e.target.closest(".tab");
+  if(tab){ filter = tab.dataset.g; try{localStorage.setItem("painel-filtro",filter);}catch(_){} render(); return; }
+  const btn = e.target.closest("[data-act]"); if(!btn || btn.tagName==="FORM") return;
+  const s = slots.find(x=>x.id===btn.closest(".slot")?.dataset.id); if(!s) return;
+  if(btn.dataset.act==="choose"){ const i=+btn.dataset.i; if(i!==s.chosen) write(s.id,{chosen:i},`Escolhida: ${s.options[i].label}`); }
+  if(btn.dataset.act==="review") write(s.id,{review:!s.review}, s.review?"Revisão removida":"Marcado para revisar");
+});
+document.addEventListener("submit", e=>{
+  const f = e.target.closest("form[data-act=add]"); if(!f) return;
+  e.preventDefault();
+  const s = slots.find(x=>x.id===f.closest(".slot").dataset.id); if(!s) return;
+  const d = Object.fromEntries(new FormData(f));
+  const opt = {src:d.src.trim(), label:d.label.trim(), desc:(d.desc||"").trim(), real:2, credit:(d.credit||"").trim(), link:(d.link||"").trim()};
+  write(s.id, {options:[...s.options, opt]}, "Opção adicionada").then(()=>f.reset());
+});
+$("#onlyReview").addEventListener("change", render);
+$("#copy").addEventListener("click", async ()=>{
+  const txt = buildJS();
+  try { await navigator.clipboard.writeText(txt); toast("images.js copiado"); }
+  catch(e){ const r=document.createRange(); r.selectNodeContents($("#code")); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); toast("Selecionei o texto: use Ctrl+C"); }
+});
+
+(async function start(){
+  db = await window.claude?.use?.("db") ?? null;
+  if(!db){
+    $("#notice").innerHTML = `<div class="notice">Este painel guarda as escolhas no claude.ai. Abra-o pelo link do claude.ai, com sua conta, para ver e salvar os espaços do quiz.</div>`;
+    $("#list").innerHTML = `<div class="empty">Sem conexão com os dados do painel.</div>`;
+    return;
+  }
+  db.collection("slots").onSnapshot(snap=>{
+    slots = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.order??0)-(b.order??0));
+    render();
+  }, err=>{
+    $("#notice").innerHTML = `<div class="notice">A conexão com os dados caiu. Recarregue a página para tentar de novo.</div>`;
+  });
+})();
+</script>

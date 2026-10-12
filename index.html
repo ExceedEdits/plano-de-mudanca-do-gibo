@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Para Onde Eu Vou?</title>
+<meta name="description" content="Quiz interativo: ajude a escolher cidade, vizinhança, tipo de moradia, cômodos e planta da próxima casa alugada.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0c0b;
+  --bg-2:#171412;
+  --surface:#1e1a17;
+  --surface-2:#28221e;
+  --line:rgba(255,236,214,.12);
+  --text:#f4ece3;
+  --muted:#b3a597;
+  --dim:#7d7268;
+  --accent:#5aa9f2;
+  --accent-2:#a8d4ff;
+  --contrast:#f2a65a;
+  --ok:#7fd1a3;
+  --bad:#ff8a7a;
+  --radius:18px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --font-display:"Fraunces", Georgia, serif;
+  --font-body:"Manrope", system-ui, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-body);overflow:hidden}
+body{-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+img{display:block;max-width:100%}
+a{color:var(--accent-2)}
+
+/* ---------- ambient background ---------- */
+.ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.blob{position:absolute;width:55vmax;height:55vmax;border-radius:50%;filter:blur(90px);opacity:.22;animation:drift 26s ease-in-out infinite alternate}
+.blob.b1{background:var(--accent);top:-20vmax;left:-15vmax}
+.blob.b2{background:var(--contrast);bottom:-25vmax;right:-20vmax;animation-duration:32s;opacity:.16}
+.blob.b3{background:#1d4ed8;top:40%;left:45%;width:30vmax;height:30vmax;animation-duration:22s;opacity:.12}
+@keyframes drift{to{transform:translate(8vmax,6vmax) scale(1.15)}}
+.grain{position:absolute;inset:-50%;opacity:.06;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");animation:grain 1.2s steps(4) infinite}
+@keyframes grain{25%{transform:translate(-3%,2%)}50%{transform:translate(2%,-3%)}75%{transform:translate(-1%,3%)}}
+.cursor-glow{position:fixed;width:420px;height:420px;border-radius:50%;pointer-events:none;z-index:1;background:radial-gradient(circle,rgba(90,169,242,.13),transparent 65%);transform:translate(-50%,-50%);transition:opacity .4s;opacity:0}
+@media (hover:hover){.cursor-glow{opacity:1}}
+
+/* ---------- chrome ---------- */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:16px;padding:14px 22px;pointer-events:none}
+.brand{font-family:var(--font-display);font-weight:600;letter-spacing:.01em;font-size:15px;color:var(--muted);pointer-events:auto;display:flex;align-items:center;gap:8px}
+.brand .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+.counter{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px;pointer-events:auto}
+.progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));z-index:21;transition:width .6s var(--ease);box-shadow:0 0 14px var(--accent)}
+
+.nav{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:10px;padding:8px;border-radius:999px;background:rgba(30,26,23,.72);backdrop-filter:blur(14px);border:1px solid var(--line)}
+.nav-btn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;transition:background .2s,transform .2s}
+.nav-btn:hover{background:var(--surface-2);transform:scale(1.08)}
+.nav-btn:disabled{opacity:.3;pointer-events:none}
+.nav-btn svg{width:18px;height:18px}
+.dots{display:flex;gap:6px;padding:0 4px}
+.dots button{width:8px;height:8px;border-radius:99px;background:var(--dim);transition:width .35s var(--ease),background .3s}
+.dots button.on{width:26px;background:var(--accent)}
+.dots button.answered:not(.on){background:var(--accent-2);opacity:.6}
+
+/* ---------- slides ---------- */
+.deck{position:relative;z-index:2;height:100dvh}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;padding:70px clamp(16px,4vw,56px) 96px;overflow-y:auto;overflow-x:hidden;
+  opacity:0;visibility:hidden;transform:translateY(30px) scale(.985);filter:blur(6px);
+  transition:opacity .6s var(--ease),transform .7s var(--ease),filter .6s var(--ease),visibility 0s .7s}
+.slide.active{opacity:1;visibility:visible;transform:none;filter:none;transition:opacity .6s var(--ease),transform .7s var(--ease),filter .6s var(--ease),visibility 0s}
+.slide.leaving-up{transform:translateY(-30px) scale(.985)}
+.slide-inner{width:100%;max-width:1240px;margin:auto}
+
+.kicker{display:inline-flex;align-items:center;gap:10px;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+.kicker::before{content:"";width:28px;height:1px;background:currentColor}
+h1,h2{font-family:var(--font-display);font-weight:600;letter-spacing:-.02em;line-height:1.02}
+h2{font-size:clamp(30px,4.6vw,58px);margin:12px 0 10px}
+.lead{color:var(--muted);font-size:clamp(15px,1.4vw,18px);max-width:62ch;line-height:1.55}
+.head{margin-bottom:clamp(18px,3vh,32px)}
+.head .hint{margin-top:10px;font-size:13px;color:var(--dim);display:flex;align-items:center;gap:6px}
+
+/* staggered reveal */
+.slide .rv{opacity:0;transform:translateY(18px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+.slide.active .rv{opacity:1;transform:none}
+.slide.active .rv:nth-child(1){transition-delay:.12s}
+.slide.active .rv:nth-child(2){transition-delay:.2s}
+.slide.active .rv:nth-child(3){transition-delay:.28s}
+.slide.active .rv:nth-child(4){transition-delay:.36s}
+.slide.active .rv:nth-child(5){transition-delay:.44s}
+
+/* ---------- cover ---------- */
+.cover{text-align:center;display:flex;flex-direction:column;align-items:center}
+.cover h1{font-size:clamp(48px,10vw,140px);font-weight:800;margin:18px 0}
+.cover h1 .q{display:inline-block;color:var(--accent);animation:wobble 3.2s ease-in-out infinite;transform-origin:50% 90%}
+@keyframes wobble{0%,100%{transform:rotate(0)}20%{transform:rotate(12deg)}40%{transform:rotate(-8deg)}60%{transform:rotate(4deg)}}
+.cover .word{display:inline-block;opacity:0;transform:translateY(40px) rotate(4deg);transition:all .9s var(--ease)}
+.slide.active .cover .word{opacity:1;transform:none}
+.cover-strip{display:flex;gap:12px;margin:34px 0 30px;perspective:900px}
+.cover-strip .ph{width:clamp(70px,11vw,150px);aspect-ratio:3/4;border-radius:14px;overflow:hidden;border:1px solid var(--line);transform:rotate(var(--r)) translateY(var(--y));transition:transform .5s var(--ease);box-shadow:0 20px 40px rgba(0,0,0,.45);animation:float 6s ease-in-out infinite;animation-delay:var(--d)}
+.cover-strip .ph img{width:100%;height:100%;object-fit:cover;transition:transform .6s var(--ease)}
+.cover-strip .ph:hover{transform:rotate(0) translateY(-18px) scale(1.12);z-index:2}
+.cover-strip .ph:hover img{transform:scale(1.1)}
+@keyframes float{50%{translate:0 -10px}}
+.cta{display:inline-flex;align-items:center;gap:12px;padding:16px 28px;border-radius:999px;background:var(--accent);color:#06121f;font-weight:700;font-size:16px;box-shadow:0 10px 30px rgba(90,169,242,.35);transition:transform .25s var(--ease),box-shadow .25s}
+.cta:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(90,169,242,.5)}
+.cta svg{width:18px;height:18px;transition:transform .25s}
+.cta:hover svg{transform:translateX(4px)}
+.cta.ghost{background:transparent;color:var(--text);border:1px solid var(--line);box-shadow:none}
+.cta.ghost:hover{background:var(--surface)}
+
+/* ---------- rules ---------- */
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:28px}
+.rule{padding:24px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);transition:transform .35s var(--ease),border-color .35s}
+.rule:hover{transform:translateY(-6px);border-color:rgba(90,169,242,.45)}
+.rule .ic{font-size:30px;margin-bottom:14px;display:inline-block;transition:transform .4s var(--ease)}
+.rule:hover .ic{transform:scale(1.25) rotate(-8deg)}
+.rule h3{font-family:var(--font-display);font-weight:600;font-size:21px;margin-bottom:8px}
+.rule p{color:var(--muted);font-size:14.5px;line-height:1.55}
+
+/* ---------- split (city) ---------- */
+.split{display:flex;gap:14px;height:min(62vh,600px);min-height:380px}
+.split-opt{position:relative;flex:1;border-radius:22px;overflow:hidden;text-align:left;transition:flex .7s var(--ease),box-shadow .4s;border:1px solid var(--line);isolation:isolate}
+.split-opt img,.split-opt .fallback{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;transition:transform 1.2s var(--ease),filter .6s}
+.split-opt::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(14,12,11,.05) 20%,rgba(14,12,11,.92));transition:opacity .5s}
+.split:hover .split-opt{flex:.75}
+.split:hover .split-opt:hover{flex:1.6}
+.split-opt:hover img{transform:scale(1.07)}
+.split:hover .split-opt:not(:hover) img{filter:grayscale(.8) brightness(.6)}
+.split-body{position:absolute;left:0;right:0;bottom:0;padding:clamp(18px,2.4vw,32px)}
+.split-body h3{font-family:var(--font-display);font-size:clamp(26px,3.4vw,44px);font-weight:600;line-height:1}
+.split-body .sub{color:var(--muted);margin-top:6px;font-size:14px}
+.proscons{display:grid;grid-template-columns:1fr 1fr;gap:6px 22px;margin-top:0;max-height:0;opacity:0;overflow:hidden;transition:max-height .7s var(--ease),opacity .5s,margin .5s}
+.split-opt:hover .proscons,.split-opt:focus-visible .proscons,.split-opt.selected .proscons{max-height:260px;opacity:1;margin-top:16px}
+.proscons li{list-style:none;font-size:13.5px;line-height:1.4;color:#e9dfd4;display:flex;gap:8px}
+.proscons li::before{flex:none;font-weight:800}
+.proscons .pro li::before{content:"+";color:var(--ok)}
+.proscons .con li::before{content:"–";color:var(--bad)}
+.proscons b{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+
+/* selected state shared */
+.pick{position:relative}
+.pick .check{position:absolute;top:14px;right:14px;width:38px;height:38px;border-radius:50%;background:var(--accent);color:#06121f;display:grid;place-items:center;transform:scale(0) rotate(-90deg);transition:transform .45s cubic-bezier(.3,1.6,.5,1);z-index:3;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.pick .check svg{width:20px;height:20px}
+.pick.selected .check{transform:scale(1) rotate(0)}
+.pick.selected{box-shadow:0 0 0 3px var(--accent),0 20px 50px rgba(90,169,242,.25)}
+.pick.dimmed,.slide.active .pick.dimmed{opacity:.55}
+.pick.dimmed:hover,.slide.active .pick.dimmed:hover{opacity:1}
+.burst{position:fixed;pointer-events:none;z-index:50;width:8px;height:8px;border-radius:2px}
+
+/* ---------- slider (neighbourhood) ---------- */
+.vibe{display:grid;grid-template-columns:1.35fr 1fr;gap:24px;align-items:stretch}
+.vibe-stage{position:relative;border-radius:22px;overflow:hidden;min-height:360px;height:min(56vh,540px);border:1px solid var(--line)}
+.vibe-stage img,.vibe-stage .fallback{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 6s linear}
+.vibe-stage .divider{position:absolute;top:0;bottom:0;width:3px;margin-left:-1.5px;background:var(--accent-2);box-shadow:0 0 18px var(--accent);pointer-events:none}
+.vibe-stage .divider::after{content:"⇆";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:40px;height:40px;border-radius:50%;background:var(--accent-2);color:#06121f;display:grid;place-items:center;font-weight:800}
+.vibe-stage .tag{position:absolute;top:14px;padding:6px 12px;border-radius:99px;background:rgba(14,12,11,.65);backdrop-filter:blur(8px);font-size:12px;font-weight:600;transition:opacity .3s}
+.vibe-stage .tag.l{left:14px}.vibe-stage .tag.r{right:14px}
+.soundwave{position:absolute;left:18px;bottom:18px;display:flex;gap:4px;align-items:flex-end;height:46px}
+.soundwave i{width:5px;border-radius:3px;background:var(--accent-2);animation:wave 1s ease-in-out infinite;animation-duration:calc(var(--sp) * 1s);height:20%}
+@keyframes wave{50%{height:var(--h)}}
+.vibe-panel{display:flex;flex-direction:column;gap:18px;padding:26px;border-radius:22px;background:var(--surface);border:1px solid var(--line)}
+.vibe-label{font-family:var(--font-display);font-size:clamp(24px,2.4vw,32px);font-weight:600;line-height:1.1;min-height:2.2em}
+.vibe-desc{color:var(--muted);font-size:14.5px;line-height:1.5;min-height:4.5em}
+.range-wrap{position:relative;padding:6px 0}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:10px;border-radius:99px;background:linear-gradient(90deg,var(--accent) 0%,var(--contrast) 100%);outline:none;cursor:grab}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;border-radius:50%;background:var(--text);border:4px solid var(--bg);box-shadow:0 0 0 2px var(--accent-2),0 6px 18px rgba(0,0,0,.5);transition:transform .2s}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15)}
+input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:var(--text);border:4px solid var(--bg);box-shadow:0 0 0 2px var(--accent-2)}
+.range-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:8px}
+.meters{display:grid;gap:12px}
+.meter{display:grid;grid-template-columns:120px 1fr 34px;gap:10px;align-items:center;font-size:13px;color:var(--muted)}
+.meter .bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.meter .bar i{display:block;height:100%;border-radius:inherit;background:var(--c,var(--accent));transition:width .35s var(--ease)}
+.meter span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.vibe-confirm{align-self:flex-start}
+
+/* ---------- flip cards (housing type) ---------- */
+.cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.flip{perspective:1200px;height:min(54vh,470px);min-height:360px;border-radius:20px}
+.flip-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .8s var(--ease)}
+@media (hover:hover){.flip:hover .flip-inner{transform:rotateY(180deg)}}
+.flip:focus-visible .flip-inner,.flip.flipped .flip-inner{transform:rotateY(180deg)}
+/* com o card virado, a frente não pode capturar o clique do botão do verso */
+@media (hover:hover){.flip:hover .face.front{pointer-events:none}}
+.flip:focus-visible .face.front,.flip.flipped .face.front{pointer-events:none}
+.flip .check{z-index:4}
+.face{position:absolute;inset:0;border-radius:20px;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;border:1px solid var(--line)}
+.face.front img,.face.front .fallback{width:100%;height:100%;object-fit:cover}
+.face.front::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(14,12,11,.92))}
+.face.front .cap{position:absolute;left:18px;right:18px;bottom:18px;z-index:1;text-align:left}
+.face.front .cap .emo{font-size:26px}
+.face.front h3{font-family:var(--font-display);font-size:24px;font-weight:600;margin-top:6px;line-height:1.05}
+.face.front .cap small{color:var(--muted);font-size:12.5px;display:block;margin-top:6px}
+.face.back{transform:rotateY(180deg);background:linear-gradient(160deg,var(--surface-2),var(--surface));padding:22px;display:flex;flex-direction:column;gap:12px;text-align:left}
+.face.back h3{font-family:var(--font-display);font-size:22px;font-weight:600}
+.face.back .proscons{max-height:none;opacity:1;grid-template-columns:1fr;margin:0;gap:12px}
+.face.back .choose{margin-top:auto;padding:12px;border-radius:12px;background:var(--accent);color:#06121f;font-weight:700;text-align:center;font-size:14px;transition:transform .2s}
+.face.back .choose:hover{transform:scale(1.03)}
+.flip.pick.selected{box-shadow:none}
+.flip.pick.selected .face{border:2px solid var(--accent)}
+.flip.pick.selected .face.front{box-shadow:0 20px 50px rgba(90,169,242,.25)}
+
+/* ---------- galleries ---------- */
+.gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.g-item{position:relative;border-radius:18px;overflow:hidden;height:min(52vh,480px);min-height:300px;border:1px solid var(--line);text-align:left;transform-style:preserve-3d;transition:transform .3s var(--ease),box-shadow .35s,opacity .35s;will-change:transform}
+.g-item img{width:100%;height:100%;object-fit:cover;transition:transform 1s var(--ease),filter .5s}
+.g-item:hover img{transform:scale(1.08)}
+.g-item::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(14,12,11,.94));pointer-events:none}
+.g-item .shine{position:absolute;inset:0;z-index:2;pointer-events:none;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(200,228,255,.22),transparent 45%);opacity:0;transition:opacity .3s}
+.g-item:hover .shine{opacity:1}
+.g-cap{position:absolute;left:16px;right:16px;bottom:16px;z-index:2}
+.g-cap h3{font-family:var(--font-display);font-size:21px;font-weight:600;line-height:1.1}
+.g-cap p{font-size:13px;color:var(--muted);line-height:1.45;max-height:0;opacity:0;overflow:hidden;transition:max-height .5s var(--ease),opacity .4s,margin .4s}
+.g-item:hover .g-cap p,.g-item.selected .g-cap p{max-height:90px;opacity:1;margin-top:6px}
+.real{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.real i{width:7px;height:7px;border-radius:50%;background:var(--surface-2);display:inline-block}
+.real i.on{background:var(--accent-2);box-shadow:0 0 6px var(--accent)}
+.zoom{position:absolute;top:14px;left:14px;z-index:3;width:36px;height:36px;border-radius:50%;background:rgba(14,12,11,.6);backdrop-filter:blur(6px);display:grid;place-items:center;opacity:0;transform:scale(.7);transition:all .3s var(--ease)}
+.zoom svg{width:16px;height:16px}
+.g-item:hover .zoom,.g-item:focus-within .zoom{opacity:1;transform:none}
+.zoom:hover{background:var(--accent);color:#06121f}
+
+/* ---------- floor plans ---------- */
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.plan{border-radius:20px;background:var(--surface);border:1px solid var(--line);padding:16px;text-align:left;display:flex;flex-direction:column;gap:10px;transition:transform .35s var(--ease),border-color .3s,box-shadow .35s,opacity .3s}
+.plan:hover{transform:translateY(-6px);border-color:rgba(90,169,242,.4)}
+.plan svg{width:100%;height:auto;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 20px),repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 1px,transparent 1px 20px);border-radius:12px;overflow:visible}
+.plan h3{font-family:var(--font-display);font-size:20px;font-weight:600}
+.plan .meta{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font-size:11.5px;padding:4px 10px;border-radius:99px;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.plan .desc{font-size:13px;color:var(--muted);line-height:1.45}
+.plan .readout{font-size:12.5px;color:var(--accent-2);min-height:1.4em;transition:opacity .2s}
+.zone{fill:rgba(90,169,242,0);stroke:#d9cbbb;stroke-width:2;transition:fill .25s;cursor:crosshair}
+.zone:hover{fill:rgba(90,169,242,.22)}
+.wall{fill:none;stroke:var(--text);stroke-width:5;stroke-linejoin:round}
+.furn{fill:rgba(255,255,255,.06);stroke:rgba(255,236,214,.45);stroke-width:1.2;pointer-events:none}
+.zlabel{fill:#e9dfd4;paint-order:stroke;stroke:#1e1a17;stroke-width:5px;stroke-linejoin:round;font-size:13px;font-family:var(--font-body);font-weight:600;pointer-events:none;text-anchor:middle}
+.door{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-dasharray:3 3;pointer-events:none}
+.win{stroke:#7cc7ff;stroke-width:5;pointer-events:none}
+.draw{stroke-dasharray:1;stroke-dashoffset:1}
+.slide.active .draw{animation:draw 1.6s var(--ease) forwards;animation-delay:var(--dl,0s)}
+@keyframes draw{to{stroke-dashoffset:0}}
+.pop{opacity:0}
+.slide.active .pop{animation:pop .5s var(--ease) forwards;animation-delay:var(--dl,1s)}
+@keyframes pop{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ---------- result ---------- */
+.result{display:grid;grid-template-columns:1fr 1.2fr;gap:28px;align-items:center}
+.result h2{font-size:clamp(34px,5vw,66px)}
+.result h2 em{font-style:normal;color:var(--accent);display:inline-block}
+.summary{display:grid;gap:8px;margin:20px 0 24px}
+.summary div{display:grid;grid-template-columns:120px 1fr;gap:12px;font-size:14.5px;padding:10px 0;border-bottom:1px solid var(--line)}
+.summary div span:first-child{color:var(--dim);font-size:12px;letter-spacing:.12em;text-transform:uppercase;padding-top:2px}
+.summary .empty{color:var(--dim);font-style:italic}
+.collage{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:clamp(110px,17vh,180px);gap:10px}
+.collage .c{border-radius:14px;overflow:hidden;border:1px solid var(--line);position:relative;opacity:0;transform:scale(.9) rotate(var(--r,0deg));transition:opacity .6s var(--ease),transform .7s var(--ease)}
+.slide.active .collage .c{opacity:1;transform:rotate(var(--r,0deg))}
+.collage .c:hover{transform:scale(1.05) rotate(0) !important;z-index:2}
+.collage .c img,.collage .c .fallback{width:100%;height:100%;object-fit:cover}
+.collage .c span{position:absolute;left:8px;bottom:8px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:rgba(14,12,11,.7)}
+.collage .c.big{grid-column:span 2;grid-row:span 2}
+.collage .c:last-child:nth-child(7){grid-column:span 3}
+.actions{display:flex;gap:12px;flex-wrap:wrap}
+.disclaimer{margin-top:18px;font-size:12px;color:var(--dim);line-height:1.5}
+.credits{margin-top:10px;font-size:11.5px;color:var(--dim);line-height:1.6}
+.credits summary{cursor:pointer;color:var(--muted)}
+.credits ul{margin:8px 0 0 18px}
+.credits a{color:var(--muted)}
+
+/* ---------- fallback for remote images ---------- */
+.fallback{display:grid;place-items:center;background:linear-gradient(135deg,#3a2a1d,#1d1a2e);color:var(--muted);font-size:13px;text-align:center;padding:12px}
+
+/* ---------- lightbox ---------- */
+.lightbox{position:fixed;inset:0;z-index:60;background:rgba(8,7,6,.9);backdrop-filter:blur(10px);display:grid;place-items:center;opacity:0;visibility:hidden;transition:opacity .35s,visibility 0s .35s;padding:24px}
+.lightbox.open{opacity:1;visibility:visible;transition:opacity .35s}
+.lightbox img{max-width:min(92vw,1100px);max-height:82vh;border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.6);transform:scale(.92);transition:transform .45s var(--ease)}
+.lightbox.open img{transform:none}
+.lightbox p{margin-top:14px;text-align:center;color:var(--muted);font-size:14px}
+.lightbox .x{position:absolute;top:18px;right:18px;width:44px;height:44px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-size:20px}
+
+.toast{position:fixed;bottom:84px;left:50%;transform:translate(-50%,20px);background:var(--surface-2);border:1px solid var(--line);padding:10px 18px;border-radius:99px;font-size:13.5px;z-index:70;opacity:0;transition:all .35s var(--ease);pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+kbd{font-family:var(--font-body);font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid var(--line);background:var(--surface)}
+
+
+/* ---------- capa: cards-mistério ---------- */
+.cover-strip .mystery{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:linear-gradient(160deg,var(--surface-2),var(--surface));position:relative}
+.mystery .mq{font-family:var(--font-display);font-size:clamp(34px,5vw,64px);font-weight:800;color:var(--accent);line-height:1;transition:transform .6s var(--ease),opacity .3s}
+.mystery .mi{position:absolute;top:50%;left:50%;font-size:clamp(28px,4vw,46px);transform:translate(-50%,-70%) scale(.4);opacity:0;transition:all .45s var(--ease)}
+.mystery .mt{font-size:clamp(10px,1.1vw,13px);font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.mystery:hover .mq{transform:rotateY(180deg) scale(.6);opacity:0}
+.mystery:hover .mi{transform:translate(-50%,-70%) scale(1);opacity:1}
+
+/* ---------- cidade com mapa ---------- */
+.city{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;height:min(62vh,600px);min-height:420px}
+.map-wrap{position:relative;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+.map{position:absolute;inset:0}
+.map-legend{position:absolute;left:12px;bottom:12px;z-index:500;display:flex;gap:12px;padding:8px 12px;border-radius:99px;background:rgba(14,12,11,.78);backdrop-filter:blur(8px);font-size:12px;color:var(--text)}
+.map-legend span{display:flex;align-items:center;gap:6px}
+.map-legend i{width:10px;height:10px;border-radius:50%}
+.split.vertical{flex-direction:column;height:auto;min-height:0}
+.split.vertical:hover .split-opt{flex:.7}
+.split.vertical:hover .split-opt:hover{flex:1.6}
+.split.vertical .proscons{grid-template-columns:1fr 1fr}
+.leaflet-container{background:#121010;font-family:var(--font-body)}
+.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.8) contrast(.95) saturate(.5)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface-2);color:var(--text);box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.leaflet-popup-content{margin:10px 14px;font-size:13px}
+.leaflet-control-attribution{background:rgba(14,12,11,.7)!important;color:var(--dim)!important}
+.leaflet-control-attribution a{color:var(--muted)!important}
+.leaflet-bar a{background:var(--surface-2)!important;color:var(--text)!important;border-color:var(--line)!important}
+.place-label{background:transparent;border:0;box-shadow:none;color:var(--text);font-weight:700;font-size:11.5px;text-shadow:0 1px 3px #000,0 0 8px #000}
+.place-label::before{display:none}
+
+/* ---------- responsive ---------- */
+@media (max-width:1000px){
+  .cards4,.gallery,.plans{grid-template-columns:repeat(2,1fr)}
+  .g-item{height:min(40vh,360px)}
+  .flip{height:340px}
+  .vibe,.result,.city{grid-template-columns:1fr}
+  .city{height:auto}
+  .map-wrap{height:320px}
+  .split.vertical .split-opt{min-height:240px}
+}
+@media (max-width:640px){
+  .slide{padding:62px 16px 92px}
+  .split{flex-direction:column;height:auto}
+  .split-opt{min-height:300px}
+  .split:hover .split-opt,.split:hover .split-opt:hover{flex:1}
+  .proscons{grid-template-columns:1fr}
+  .cards4,.gallery{grid-template-columns:1fr 1fr;gap:10px}
+  .g-item{height:250px;min-height:0}
+  .g-cap h3{font-size:16px}
+  .flip{height:300px;min-height:0}
+  .face.front h3{font-size:18px}
+  .plans{grid-template-columns:1fr}
+  .meter{grid-template-columns:96px 1fr 30px}
+  .summary div{grid-template-columns:96px 1fr}
+  .dots{display:none}
+  .cover-strip{gap:6px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+</style>
+</head>
+<body>
+
+<div class="ambient" aria-hidden="true">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="grain"></div>
+</div>
+<div class="cursor-glow" aria-hidden="true"></div>
+<div class="progress" id="progress"></div>
+
+<header class="topbar">
+  <div class="brand"><span class="dot"></span>Quiz da Mudança</div>
+  <div class="counter" id="counter"></div>
+</header>
+
+<main class="deck" id="deck"></main>
+
+<nav class="nav" aria-label="Navegação dos slides">
+  <button class="nav-btn" id="prev" aria-label="Slide anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+  <div class="dots" id="dots"></div>
+  <button class="nav-btn" id="next" aria-label="Próximo slide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+</nav>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Imagem ampliada">
+  <button class="x" aria-label="Fechar">✕</button>
+  <div><img alt=""><p></p></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="images.js"></script>
+<script>
+/* ============================================================
+   DADOS
+   ============================================================ */
+/* As fotos ficam em images.js (window.QUIZ_IMAGES), mantido pelo Painel de Imagens. */
+const IMAGES = window.QUIZ_IMAGES || {};
+const pic = slot => IMAGES[slot]?.src || "";
+// opção de galeria: texto e foto vêm do images.js
+const room = slot => ({id:slot, img:pic(slot), label:IMAGES[slot]?.label || slot, desc:IMAGES[slot]?.desc || "", real:IMAGES[slot]?.real ?? 2});
+
+const QUESTIONS = [
+  {
+    id:"cidade", type:"city", kicker:"01 · Cidade",
+    title:"Capital ou ABC?",
+    lead:"Primeira grande decisão: morar dentro de São Paulo ou num dos municípios do ABC paulista. Passe o mouse nas opções para ver a região no mapa.",
+    options:[
+      {id:"sp", label:"São Paulo capital", sub:"Centro expandido, zona sul, leste…", img:pic("cidade-sp"),
+        view:{center:[-23.565,-46.645], zoom:12},
+        pros:["Mais opções de trabalho, lazer e cultura","Rede de metrô mais ampla","Serviços e delivery a toda hora"],
+        cons:["Aluguel tende a ser mais caro","Mais trânsito e barulho"]},
+      {id:"abc", label:"ABC paulista", sub:"Santo André · São Bernardo · São Caetano", img:pic("cidade-abc"),
+        view:{center:[-23.665,-46.56], zoom:12},
+        pros:["Aluguel costuma ser mais acessível","Ritmo um pouco mais calmo","Trem (CPTM) e rodovias até a capital"],
+        cons:["Deslocamento maior até SP","Menos opções de metrô"]}
+    ],
+    // pontos de referência (coordenadas aproximadas dos centros)
+    places:[
+      {n:"Praça da Sé", c:[-23.5505,-46.6340], g:"sp"},
+      {n:"Avenida Paulista", c:[-23.5614,-46.6559], g:"sp"},
+      {n:"Pinheiros", c:[-23.5670,-46.6930], g:"sp"},
+      {n:"Tatuapé", c:[-23.5404,-46.5766], g:"sp"},
+      {n:"São Caetano do Sul", c:[-23.6229,-46.5548], g:"abc"},
+      {n:"Santo André", c:[-23.6639,-46.5383], g:"abc"},
+      {n:"São Bernardo do Campo", c:[-23.6914,-46.5646], g:"abc"},
+      {n:"Diadema", c:[-23.6861,-46.6228], g:"abc"},
+      {n:"Mauá", c:[-23.6677,-46.4613], g:"abc"}
+    ]
+  },
+  {
+    id:"vizinhanca", type:"slider", kicker:"02 · Vizinhança",
+    title:"Barulho ou distância?",
+    lead:"Perto da estação é prático, mas vem junto com movimento. Arraste e escolha o ponto de equilíbrio.",
+    left:{label:"Agito perto da estação", img:pic("viz-estacao")},
+    right:{label:"Rua tranquila e arborizada", img:pic("viz-tranquila")},
+    stops:[
+      {max:20, id:"colado", label:"Colado na estação", desc:"Sai de casa e já está na plataforma. Em troca: buzina, ônibus e movimento até tarde."},
+      {max:45, id:"perto", label:"A poucos quarteirões", desc:"Caminhada curta até o transporte, numa rua um pouco menos movimentada."},
+      {max:70, id:"meio", label:"Meio-termo", desc:"Um trecho a pé ou de ônibus até a estação, mas noites bem mais silenciosas."},
+      {max:101, id:"tranquilo", label:"Refúgio tranquilo", desc:"Rua calma, mais verde e silêncio. O preço é depender de ônibus, bike ou carro."}
+    ]
+  },
+  {
+    id:"moradia", type:"flip", kicker:"03 · Tipo de moradia",
+    title:"Que tipo de lugar?",
+    lead:"Passe o mouse (ou toque) para virar o card e ver os prós e contras.",
+    options:[
+      {id:"predio", emo:"🏢", label:"Condomínio de prédios", sub:"Apê ou studio com portaria", img:pic("moradia-predio"),
+        pros:["Portaria e mais segurança","Áreas comuns (academia, lavanderia)","Entregas mais fáceis"],
+        cons:["Taxa de condomínio","Regras de convivência e barulho do vizinho"]},
+      {id:"casa", emo:"🏡", label:"Casa ou vila de casas", sub:"Edícula, sobrado, casinha de vila", img:pic("moradia-casa"),
+        pros:["Mais privacidade","Sem vizinho de cima","Às vezes um quintal"],
+        cons:["Menos segurança sem portaria","Manutenção pode cair no inquilino"]},
+      {id:"republica", emo:"🛋️", label:"República", sub:"Quarto próprio, casa dividida", img:pic("moradia-republica"),
+        pros:["Custo dividido","Sempre tem companhia","Contas já organizadas"],
+        cons:["Pouca privacidade","Fila do banheiro e regras da casa"]},
+      {id:"kitnet", emo:"🏙️", label:"Kitnet no centro", sub:"Prédio antigo, localização central", img:pic("moradia-kitnet"),
+        pros:["Localização muito central","Aluguel menor pelo tamanho","Tudo a pé"],
+        cons:["Prédios mais antigos","Espaço bem reduzido e barulho"]}
+    ].map(o=>{ const m=IMAGES["moradia-"+o.id]; return m ? {...o, label:m.label||o.label, sub:m.desc||o.sub} : o; })
+  },
+  {
+    id:"studio", type:"gallery", kicker:"04 · O imóvel",
+    title:"Qual studio tem a sua cara?",
+    lead:"Imóvel pequeno, então o layout é tudo. Qual dessas distribuições você escolheria?",
+    options:["studio-1","studio-2","studio-3","studio-4"].map(room)
+  },
+  {
+    id:"sala", type:"gallery", kicker:"05 · Sala",
+    title:"E a sala?",
+    lead:"Onde vai rolar o sofá, a série e as visitas.",
+    options:["sala-1","sala-2","sala-3","sala-4"].map(room)
+  },
+  {
+    id:"quarto", type:"gallery", kicker:"06 · Quarto",
+    title:"Hora de dormir.",
+    lead:"Mesmo que seja um cantinho do studio, ele precisa ter personalidade.",
+    options:["quarto-1","quarto-2","quarto-3","quarto-4"].map(room)
+  },
+  {
+    id:"cozinha", type:"gallery", kicker:"07 · Cozinha",
+    title:"Cozinha dos sonhos (alugada).",
+    lead:"Em studio ela costuma ser compacta. Qual estilo funciona?",
+    options:["cozinha-1","cozinha-2","cozinha-3","cozinha-4"].map(room)
+  },
+  {
+    id:"banheiro", type:"gallery", kicker:"08 · Banheiro",
+    title:"E o banheiro?",
+    lead:"Pequeno, mas dá para ser agradável.",
+    options:["banheiro-1","banheiro-2","banheiro-3","banheiro-4"].map(room)
+  },
+  {
+    id:"planta", type:"plans", kicker:"09 · Planta",
+    title:"Qual planta funciona?",
+    lead:"Ideias de distribuição para imóveis de até 25 m². Passe o mouse sobre os ambientes para ver detalhes. As metragens são aproximadas e só ilustrativas.",
+    options:[
+      {id:"integrado", label:"Studio integrado", area:"~22 m²", tags:["1 ambiente","cozinha linear"],
+        desc:"Tudo num só espaço: a cama fica no fundo, perto da janela, e o sofá na entrada.",
+        walls:[[10,10,400,280]],
+        zones:[
+          {r:[10,10,100,100], n:"Banheiro", d:"~2,5 m²: box, vaso e pia compactos"},
+          {r:[10,110,100,180], n:"Entrada", d:"Sapateira e cabideiro"},
+          {r:[110,10,300,60], n:"Cozinha linear", d:"Pia, cooktop de 2 bocas e frigobar numa parede"},
+          {r:[110,70,160,220], n:"Estar", d:"Sofá + mesa dobrável que vira mesa de jantar"},
+          {r:[270,70,140,220], n:"Dormir", d:"Cama de casal encostada na janela"}
+        ],
+        furn:[[116,16,288,24,4],[300,170,100,112,8],[124,236,110,44,10],[34,22,36,30,12],[66,70,36,32,4]],
+        windows:[[410,110,410,240]], doors:[[10,230,50]]
+      },
+      {id:"nicho", label:"Studio com nicho", area:"~24 m²", tags:["divisória","cozinha americana"],
+        desc:"Uma estante vazada separa a cama da sala sem bloquear a luz da janela.",
+        walls:[[10,10,400,280]],
+        zones:[
+          {r:[10,10,110,100], n:"Banheiro", d:"Com nicho no box"},
+          {r:[120,10,290,100], n:"Cozinha americana", d:"Balcão que serve de mesa para dois"},
+          {r:[10,110,250,180], n:"Estar", d:"Sofá-cama, TV e home office"},
+          {r:[260,110,150,180], n:"Nicho da cama", d:"Separado por estante vazada"}
+        ],
+        furn:[[126,16,278,24,4],[170,80,170,20,4],[290,170,110,112,8],[30,230,120,44,10],[200,124,50,30,4]],
+        shelf:[258,120,258,250],
+        windows:[[410,140,410,260],[60,290,190,290]], doors:[[10,150,50]]
+      },
+      {id:"cozinhafechada", label:"Studio com cozinha fechada", area:"~23 m²", tags:["cheiro longe da cama","1 ambiente"],
+        desc:"A cozinha fica num cantinho com porta. O resto vira um único cômodo de sala e quarto.",
+        walls:[[10,10,400,280]],
+        zones:[
+          {r:[10,10,140,110], n:"Cozinha", d:"Bancada em L e área de serviço"},
+          {r:[10,130,140,90], n:"Banheiro", d:"Box, vaso e pia"},
+          {r:[10,220,140,70], n:"Entrada", d:"Ganchos e sapateira"},
+          {r:[150,10,260,280], n:"Sala e quarto", d:"Cama, sofá pequeno e mesa na janela"}
+        ],
+        furn:[[16,16,128,22,4],[16,38,22,60,4],[290,30,110,100,8],[170,236,110,44,10],[330,210,70,60,6],[110,150,30,28,10]],
+        inner:[[150,10,150,290],[10,125,150,125],[10,220,150,220]],
+        windows:[[410,40,410,250],[30,10,110,10]], doors:[[150,90,30],[150,195,30],[10,280,40]]
+      },
+      {id:"kitnet", label:"Kitnet linear", area:"~18 m²", tags:["compacto","econômico"],
+        desc:"Retangular e enxuto: cada metro tem função. Cama de solteiro ou sofá-cama.",
+        walls:[[10,80,400,140]],
+        zones:[
+          {r:[10,80,90,70], n:"Banheiro", d:"Mínimo, mas resolve"},
+          {r:[10,150,90,70], n:"Entrada", d:"Ganchos e uma prateleira"},
+          {r:[100,80,120,140], n:"Cozinha", d:"Frigobar, pia e cooktop de 2 bocas"},
+          {r:[220,80,190,140], n:"Estar e dormir", d:"Sofá-cama e mesa dobrável"}
+        ],
+        furn:[[106,86,108,24,4],[250,150,140,62,8],[300,90,60,30,4]],
+        windows:[[410,100,410,200]], doors:[[10,180,35]]
+      }
+    ]
+  }
+];
+
+/* ============================================================
+   ESTADO (localStorage protegido)
+   ============================================================ */
+const STORE_KEY = "quiz-mudanca-v1";
+let answers = {};
+try { answers = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch(e) { answers = {}; }
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(answers)); }catch(e){} }
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const CHECK = `<span class="check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>`;
+const ARROW = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+const img = (src, alt, extra="") =>
+  `<img src="${src}" alt="${esc(alt)}" loading="lazy" decoding="async" ${extra} onerror="this.outerHTML='<div class=&quot;fallback&quot;>${esc(alt).replace(/'/g,"")}</div>'">`;
+const headHTML = q => `
+  <div class="head">
+    <div class="kicker rv">${q.kicker}</div>
+    <h2 class="rv">${q.title}</h2>
+    <p class="lead rv">${q.lead}</p>
+  </div>`;
+const realDots = n => `<div class="real">Chance de achar alugado ${[1,2,3].map(i=>`<i class="${i<=n?"on":""}"></i>`).join("")}</div>`;
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderCover(){
+  // capa sem spoilers: só os temas, as fotos aparecem nos slides
+  const topics = [["Cidade","🗺️"],["Vizinhança","🚇"],["Moradia","🏠"],["Cômodos","🛋️"],["Planta","📐"]];
+  const rot = [-7,4,-2,6,-5];
+  return `<section class="slide" data-kind="cover"><div class="slide-inner cover">
+    <div class="kicker rv">Quiz interativo</div>
+    <h1><span class="word">Para</span> <span class="word" style="transition-delay:.1s">onde</span> <span class="word" style="transition-delay:.2s">eu</span> <span class="word" style="transition-delay:.3s">vou<span class="q">?</span></span></h1>
+    <p class="lead rv" style="margin:0 auto">Cinco decisões, várias opções e nenhuma resposta certa. Me ajude a escolher o próximo canto alugado.</p>
+    <div class="cover-strip rv">
+      ${topics.map(([t,ic],i)=>`<div class="ph mystery" style="--r:${rot[i]}deg;--y:${i%2?14:0}px;--d:${i*.4}s"><span class="mq">?</span><span class="mi" aria-hidden="true">${ic}</span><span class="mt">${t}</span></div>`).join("")}
+    </div>
+    <div class="rv"><button class="cta" data-go="next">Começar ${ARROW}</button></div>
+  </div></section>`;
+}
+
+function renderRules(){
+  const rules = [
+    {ic:"🔑", t:"É aluguel", p:"Não dá para reformar nem escolher tudo. A ideia é achar a direção, não o imóvel perfeito."},
+    {ic:"📐", t:"Vai ser pequeno", p:"Studio ou kitnet com menos de 25 m². Cada metro quadrado conta."},
+    {ic:"🗳️", t:"Você escolhe", p:"Em cada slide, clique na opção que você acha a melhor para mim. Dá para mudar a qualquer momento."},
+    {ic:"⌨️", t:"Navegação", p:"Use as setas do teclado, os botões aqui embaixo ou deslize no celular."}
+  ];
+  return `<section class="slide" data-kind="rules"><div class="slide-inner">
+    <div class="kicker rv">Antes de começar</div>
+    <h2 class="rv">Algumas regras do jogo</h2>
+    <div class="rules">${rules.map((r,i)=>`<div class="rule rv" style="transition-delay:${.2+i*.08}s"><span class="ic">${r.ic}</span><h3>${r.t}</h3><p>${r.p}</p></div>`).join("")}</div>
+  </div></section>`;
+}
+
+function renderCity(q){
+  return `<section class="slide" data-q="${q.id}"><div class="slide-inner">
+    ${headHTML(q)}
+    <div class="city rv">
+      <div class="map-wrap">
+        <div class="map" id="cityMap" role="img" aria-label="Mapa da capital paulista e do ABC"></div>
+        <div class="map-legend"><span><i style="background:var(--accent)"></i>São Paulo capital</span><span><i style="background:var(--contrast)"></i>ABC paulista</span></div>
+      </div>
+      <div class="split vertical">
+        ${q.options.map(o=>`
+          <button class="split-opt pick" data-opt="${o.id}" aria-pressed="false">
+            ${CHECK}${img(o.img,o.label)}
+            <div class="split-body">
+              <h3>${o.label}</h3><div class="sub">${o.sub}</div>
+              <div class="proscons">
+                <ul class="pro"><b>Prós</b>${o.pros.map(x=>`<li>${x}</li>`).join("")}</ul>
+                <ul class="con"><b>Contras</b>${o.cons.map(x=>`<li>${x}</li>`).join("")}</ul>
+              </div>
+            </div>
+          </button>`).join("")}
+      </div>
+    </div>
+  </div></section>`;
+}
+
+function renderSplit(q){
+  return `<section class="slide" data-q="${q.id}"><div class="slide-inner">
+    ${headHTML(q)}
+    <div class="split rv">
+      ${q.options.map(o=>`
+        <button class="split-opt pick" data-opt="${o.id}" aria-pressed="false">
+          ${CHECK}${img(o.img,o.label)}
+          <div class="split-body">
+            <h3>${o.label}</h3><div class="sub">${o.sub}</div>
+            <div class="proscons">
+              <ul class="pro"><b>Prós</b>${o.pros.map(x=>`<li>${x}</li>`).join("")}</ul>
+              <ul class="con"><b>Contras</b>${o.cons.map(x=>`<li>${x}</li>`).join("")}</ul>
+            </div>
+          </div>
+        </button>`).join("")}
+    </div>
+  </div></section>`;
+}
+
+function renderSlider(q){
+  const bars = Array.from({length:14},(_,i)=>`<i style="--sp:${(.5+Math.random()*.7).toFixed(2)};--h:${30+Math.random()*70}%"></i>`).join("");
+  return `<section class="slide" data-q="${q.id}"><div class="slide-inner">
+    ${headHTML(q)}
+    <div class="vibe rv">
+      <div class="vibe-stage">
+        ${img(q.right.img,q.right.label,'data-side="r"')}
+        ${img(q.left.img,q.left.label,'data-side="l"')}
+        <span class="divider"></span>
+        <span class="tag l">🚇 ${q.left.label}</span>
+        <span class="tag r">🌳 ${q.right.label}</span>
+        <div class="soundwave" aria-hidden="true">${bars}</div>
+      </div>
+      <div class="vibe-panel">
+        <div class="vibe-label" aria-live="polite"></div>
+        <div class="vibe-desc"></div>
+        <div class="range-wrap">
+          <input type="range" min="0" max="100" value="${answers[q.id]?.v ?? 50}" aria-label="Equilíbrio entre proximidade da estação e tranquilidade">
+          <div class="range-ends"><span>🚇 Estação</span><span>Silêncio 🌳</span></div>
+        </div>
+        <div class="meters">
+          <div class="meter" data-m="ruido"><span>Barulho</span><div class="bar"><i style="--c:var(--bad)"></i></div><span></span></div>
+          <div class="meter" data-m="pratico"><span>Praticidade</span><div class="bar"><i style="--c:var(--accent)"></i></div><span></span></div>
+          <div class="meter" data-m="paz"><span>Sossego</span><div class="bar"><i style="--c:var(--ok)"></i></div><span></span></div>
+          <div class="meter" data-m="trajeto"><span>Tempo de trajeto</span><div class="bar"><i style="--c:var(--contrast)"></i></div><span></span></div>
+        </div>
+        <button class="cta vibe-confirm pick" style="padding:12px 20px;font-size:14px">Quero esse equilíbrio ${ARROW}</button>
+      </div>
+    </div>
+  </div></section>`;
+}
+
+function renderFlip(q){
+  return `<section class="slide" data-q="${q.id}"><div class="slide-inner">
+    ${headHTML(q)}
+    <div class="cards4">
+      ${q.options.map((o,i)=>`
+        <div class="flip pick rv" tabindex="0" data-opt="${o.id}" style="transition-delay:${.25+i*.08}s">
+          ${CHECK}
+          <div class="flip-inner">
+            <div class="face front">${img(o.img,o.label)}
+              <div class="cap"><span class="emo">${o.emo}</span><h3>${o.label}</h3><small>${o.sub}</small></div>
+            </div>
+            <div class="face back">
+              <h3>${o.emo} ${o.label}</h3>
+              <div class="proscons">
+                <ul class="pro"><b>Prós</b>${o.pros.map(x=>`<li>${x}</li>`).join("")}</ul>
+                <ul class="con"><b>Contras</b>${o.cons.map(x=>`<li>${x}</li>`).join("")}</ul>
+              </div>
+              <button class="choose" data-choose="${o.id}">Escolher este</button>
+            </div>
+          </div>
+        </div>`).join("")}
+    </div>
+  </div></section>`;
+}
+
+function renderGallery(q){
+  return `<section class="slide" data-q="${q.id}"><div class="slide-inner">
+    ${headHTML(q)}
+    <div class="gallery">
+      ${q.options.map((o,i)=>`
+        <div class="g-item pick rv" role="button" tabindex="0" aria-pressed="false" data-opt="${o.id}" style="transition-delay:${.22+i*.07}s">
+          ${CHECK}<span class="shine"></span>
+          <button class="zoom" data-zoom="${o.img}" data-cap="${esc(o.label)}" aria-label="Ampliar ${esc(o.label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+          ${img(o.img,o.label)}
+          <div class="g-cap"><h3>${o.label}</h3><p>${o.desc}</p>${realDots(o.real)}</div>
+        </div>`).join("")}
+    </div>
+  </div></section>`;
+}
+
+function planSVG(p){
+  const zones = p.zones.map((z,i)=>{
+    const [x,y,w,h]=z.r;
+    return `<rect class="zone draw" pathLength="1" style="--dl:${.1+i*.15}s" x="${x}" y="${y}" width="${w}" height="${h}" data-n="${esc(z.n)}" data-d="${esc(z.d)}"/>
+            <text class="zlabel pop" style="--dl:${1.1+i*.1}s" x="${x+w/2}" y="${y+h/2+4}">${z.n}</text>`;
+  }).join("");
+  const furn = (p.furn||[]).map(([x,y,w,h,r],i)=>`<rect class="furn pop" style="--dl:${1.3+i*.06}s" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/>`).join("");
+  const walls = p.walls.map(([x,y,w,h])=>`<rect class="wall draw" pathLength="1" x="${x}" y="${y}" width="${w}" height="${h}"/>`).join("");
+  const inner = (p.inner||[]).map(([a,b,c,d])=>`<line class="wall draw" pathLength="1" style="--dl:.5s;stroke-width:3.5" x1="${a}" y1="${b}" x2="${c}" y2="${d}"/>`).join("");
+  const shelf = p.shelf ? `<line class="furn pop" style="--dl:1.2s;stroke:var(--accent-2);stroke-width:6;stroke-dasharray:8 5" x1="${p.shelf[0]}" y1="${p.shelf[1]}" x2="${p.shelf[2]}" y2="${p.shelf[3]}"/>` : "";
+  const wins = (p.windows||[]).map(([a,b,c,d])=>`<line class="win pop" style="--dl:1.5s" x1="${a}" y1="${b}" x2="${c}" y2="${d}"/>`).join("");
+  const doors = (p.doors||[]).map(([x,y,r])=>`<path class="door pop" style="--dl:1.6s" d="M${x} ${y} l${r*.0} ${-r} A${r} ${r} 0 0 1 ${x+r} ${y}"/>`).join("");
+  return `<svg viewBox="0 0 420 300" role="img" aria-label="Planta ${esc(p.label)}">${zones}${inner}${walls}${furn}${shelf}${wins}${doors}</svg>`;
+}
+
+function renderPlans(q){
+  return `<section class="slide" data-q="${q.id}"><div class="slide-inner">
+    ${headHTML(q)}
+    <div class="plans">
+      ${q.options.map((p,i)=>`
+        <div class="plan pick rv" role="button" tabindex="0" aria-pressed="false" data-opt="${p.id}" style="transition-delay:${.22+i*.07}s">
+          ${CHECK}
+          ${planSVG(p)}
+          <div class="readout">Passe o mouse na planta</div>
+          <h3>${p.label}</h3>
+          <div class="meta"><span class="chip">${p.area}</span>${p.tags.map(t=>`<span class="chip">${t}</span>`).join("")}</div>
+          <p class="desc">${p.desc}</p>
+        </div>`).join("")}
+    </div>
+  </div></section>`;
+}
+
+function renderResult(){
+  const credits = Object.values(IMAGES).filter(r=>r.link).map(r=>`<li><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.label)}</a> · ${esc(r.credit)}</li>`).join("");
+  return `<section class="slide" data-kind="result"><div class="slide-inner result">
+    <div>
+      <div class="kicker rv">Resultado</div>
+      <h2 class="rv" id="resTitle"></h2>
+      <div class="summary rv" id="resSummary"></div>
+      <div class="actions rv">
+        <button class="cta" id="copyRes">Copiar resultado ${ARROW}</button>
+        <button class="cta ghost" id="restart">Refazer o quiz</button>
+      </div>
+      <p class="disclaimer rv">Só um quiz para ajudar na decisão: aluguel, valores e disponibilidade dependem de cada imóvel e devem ser conferidos na hora da busca.</p>
+      <details class="credits rv"><summary>Créditos das fotos externas</summary><ul>${credits}</ul></details>
+    </div>
+    <div class="collage" id="collage"></div>
+  </div></section>`;
+}
+
+const RENDER = {city:renderCity, split:renderSplit, slider:renderSlider, flip:renderFlip, gallery:renderGallery, plans:renderPlans};
+const deck = $("#deck");
+deck.innerHTML = renderCover() + renderRules() + QUESTIONS.map(q=>RENDER[q.type](q)).join("") + renderResult();
+const slides = $$(".slide", deck);
+
+/* ============================================================
+   NAVEGAÇÃO
+   ============================================================ */
+let current = 0;
+const dotsEl = $("#dots");
+dotsEl.innerHTML = slides.map((_,i)=>`<button aria-label="Ir para o slide ${i+1}" data-i="${i}"></button>`).join("");
+const dots = $$("button", dotsEl);
+
+function go(i){
+  i = Math.max(0, Math.min(slides.length-1, i));
+  if(i === current && slides[i].classList.contains("active")) return;
+  slides.forEach((s,k)=>{
+    s.classList.toggle("active", k===i);
+    s.classList.toggle("leaving-up", k<i);
+  });
+  current = i;
+  slides[i].scrollTop = 0;
+  $("#progress").style.width = `${(i/(slides.length-1))*100}%`;
+  $("#counter").textContent = `${String(i+1).padStart(2,"0")} / ${String(slides.length).padStart(2,"0")}`;
+  $("#prev").disabled = i===0;
+  $("#next").disabled = i===slides.length-1;
+  dots.forEach((d,k)=>d.classList.toggle("on", k===i));
+  if(slides[i].dataset.kind === "result") buildResult();
+  if(slides[i].dataset.q === "cidade" && typeof cityMap !== "undefined") cityMap.show();
+  try{ history.replaceState(null,"",`#${i+1}`); }catch(e){}
+}
+$("#prev").onclick = () => go(current-1);
+$("#next").onclick = () => go(current+1);
+dotsEl.onclick = e => { if(e.target.dataset.i) go(+e.target.dataset.i); };
+document.addEventListener("click", e => { if(e.target.closest("[data-go=next]")) go(current+1); });
+
+document.addEventListener("keydown", e => {
+  if($("#lightbox").classList.contains("open")){ if(e.key==="Escape") closeLightbox(); return; }
+  if(e.target.matches("input[type=range]")) return;
+  if(["ArrowRight","PageDown"].includes(e.key)) { e.preventDefault(); go(current+1); }
+  if(["ArrowLeft","PageUp"].includes(e.key)) { e.preventDefault(); go(current-1); }
+  if(e.key==="Home") go(0);
+  if(e.key==="End") go(slides.length-1);
+});
+
+// swipe
+let tx=null, ty=null;
+deck.addEventListener("touchstart", e=>{ tx=e.touches[0].clientX; ty=e.touches[0].clientY; }, {passive:true});
+deck.addEventListener("touchend", e=>{
+  if(tx===null) return;
+  const dx=e.changedTouches[0].clientX-tx, dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.4 && !e.target.matches("input")) go(current + (dx<0?1:-1));
+  tx=null;
+}, {passive:true});
+
+/* ============================================================
+   SELEÇÃO
+   ============================================================ */
+function burst(x,y){
+  const colors=["#5aa9f2","#a8d4ff","#f2a65a","#7fd1a3","#f4ece3"];
+  for(let i=0;i<18;i++){
+    const p=document.createElement("span");
+    p.className="burst";
+    p.style.left=x+"px"; p.style.top=y+"px";
+    p.style.background=colors[i%colors.length];
+    document.body.appendChild(p);
+    const a=Math.random()*Math.PI*2, d=50+Math.random()*90;
+    p.animate([{transform:"translate(-50%,-50%) scale(1)",opacity:1},{transform:`translate(${Math.cos(a)*d}px,${Math.sin(a)*d}px) rotate(${Math.random()*360}deg) scale(.3)`,opacity:0}],{duration:700+Math.random()*400,easing:"cubic-bezier(.2,.8,.2,1)"}).onfinish=()=>p.remove();
+  }
+}
+function paintSelection(qid){
+  const s = $(`.slide[data-q="${qid}"]`); if(!s) return;
+  const sel = answers[qid]?.id;
+  $$("[data-opt]", s).forEach(el=>{
+    const on = el.dataset.opt===sel;
+    el.classList.toggle("selected", on);
+    el.classList.toggle("dimmed", !!sel && !on);
+    el.setAttribute("aria-pressed", on);
+  });
+  const idx = slides.indexOf(s);
+  dots[idx]?.classList.toggle("answered", !!sel);
+}
+function choose(qid, optId, ev){
+  answers[qid] = {...(answers[qid]||{}), id:optId};
+  save(); paintSelection(qid);
+  if(ev) { const r = ev.target.closest(".pick")?.getBoundingClientRect(); if(r) burst(r.left+r.width/2, r.top+Math.min(r.height/2,200)); }
+  toast("Escolha registrada ✓");
+}
+deck.addEventListener("click", e=>{
+  if(e.target.closest(".zoom")) return;
+  const slide = e.target.closest(".slide"); const qid = slide?.dataset.q; if(!qid) return;
+  const ch = e.target.closest("[data-choose]");
+  if(ch){ choose(qid, ch.dataset.choose, e); return; }
+  const opt = e.target.closest("[data-opt]");
+  if(!opt) return;
+  // no toque, o primeiro toque vira o card; a escolha é pelo botão do verso
+  if(opt.classList.contains("flip") && matchMedia("(hover:none)").matches){ opt.classList.toggle("flipped"); return; }
+  // no desktop, clicar em qualquer parte do card também escolhe
+  choose(qid, opt.dataset.opt, e);
+});
+deck.addEventListener("keydown", e=>{
+  if(e.key!=="Enter" && e.key!==" ") return;
+  const opt = e.target.closest?.("[data-opt]"); if(!opt || e.target.matches("button")) return;
+  e.preventDefault(); choose(opt.closest(".slide").dataset.q, opt.dataset.opt, {target:opt});
+});
+QUESTIONS.forEach(q=>paintSelection(q.id));
+
+/* ============================================================
+   SLIDER DA VIZINHANÇA
+   ============================================================ */
+(function(){
+  const q = QUESTIONS.find(x=>x.type==="slider");
+  const s = $(`.slide[data-q="${q.id}"]`);
+  const range = $("input[type=range]", s);
+  const L = () => $('[data-side="l"]', s), R = () => $('[data-side="r"]', s);
+  const stopFor = v => q.stops.find(st=>v<st.max);
+  const set = (m,val) => { const el=$(`[data-m="${m}"]`,s); $("i",el).style.width=val+"%"; $("span:last-child",el).textContent=Math.round(val/10); };
+  function update(){
+    const v = +range.value, t = v/100, st = stopFor(v);
+    if(L()) L().style.clipPath = `inset(0 ${v}% 0 0)`;
+    $(".divider",s).style.left = `${100-v}%`;
+    $(".tag.l",s).style.opacity = 1 - t*0.7; $(".tag.r",s).style.opacity = .3 + t*0.7;
+    $(".vibe-label",s).textContent = st.label;
+    $(".vibe-desc",s).textContent = st.desc;
+    set("ruido", 95 - t*80); set("pratico", 95 - t*70); set("paz", 10 + t*85); set("trajeto", 15 + t*80);
+    $$(".soundwave i",s).forEach(i=>i.style.animationPlayState = t>.85 ? "paused" : "running");
+    $(".soundwave",s).style.opacity = 1 - t*.85;
+    range.style.background = `linear-gradient(90deg,var(--accent) 0%,var(--accent-2) ${v}%,var(--surface-2) ${v}%)`;
+  }
+  range.addEventListener("input", update);
+  // arrastar direto na foto também move a cortina
+  const stage = $(".vibe-stage", s); let dragging = false;
+  const fromPointer = e => { const r = stage.getBoundingClientRect(); range.value = Math.round(100 - Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 100); range.dispatchEvent(new Event("input")); };
+  stage.style.cursor = "ew-resize"; stage.style.touchAction = "pan-y";
+  stage.addEventListener("pointerdown", e => { dragging = true; stage.setPointerCapture(e.pointerId); fromPointer(e); });
+  stage.addEventListener("pointermove", e => { if(dragging) fromPointer(e); });
+  stage.addEventListener("pointerup", () => dragging = false);
+  $(".vibe-confirm",s).addEventListener("click", e=>{
+    const v=+range.value; answers[q.id] = {id:stopFor(v).id, v};
+    save(); $(".vibe-confirm",s).classList.add("selected");
+    dots[slides.indexOf(s)]?.classList.add("answered");
+    const r=e.currentTarget.getBoundingClientRect(); burst(r.left+r.width/2,r.top+r.height/2);
+    toast(`Registrado: ${stopFor(v).label}`);
+  });
+  range.addEventListener("input", ()=>$(".vibe-confirm",s).classList.remove("selected"));
+  if(answers[q.id]) $(".vibe-confirm",s).classList.add("selected");
+  update();
+})();
+
+
+/* ============================================================
+   MAPA DA CIDADE (Leaflet + OpenStreetMap/CARTO)
+   ============================================================ */
+const cityMap = (function(){
+  const q = QUESTIONS.find(x=>x.type==="city");
+  const s = $(`.slide[data-q="${q.id}"]`);
+  let map = null, groups = {};
+  const COLOR = {sp:"#5aa9f2", abc:"#f2a65a"};
+  const AREA = {sp:{c:[-23.56,-46.64], r:11000}, abc:{c:[-23.665,-46.56], r:8500}};
+  function init(){
+    if(map || !window.L) return;
+    map = L.map("cityMap",{zoomControl:true, scrollWheelZoom:false, attributionControl:true}).setView([-23.61,-46.6],11);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
+      maxZoom:18,
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+    }).addTo(map);
+    ["sp","abc"].forEach(g=>{
+      const area = L.circle(AREA[g].c,{radius:AREA[g].r,color:COLOR[g],weight:1.5,fillColor:COLOR[g],fillOpacity:.08,dashArray:"6 6"});
+      const pins = q.places.filter(p=>p.g===g).map(p=>L.circleMarker(p.c,{radius:6,color:"#0e0c0b",weight:2,fillColor:COLOR[g],fillOpacity:1})
+        .bindTooltip(p.n,{permanent:true,direction:"right",className:"place-label",offset:[6,0]}));
+      groups[g] = {area, layer:L.layerGroup([area,...pins]).addTo(map)};
+    });
+  }
+  function focus(id){
+    if(!map) return;
+    const o = q.options.find(x=>x.id===id);
+    Object.entries(groups).forEach(([g,v])=>v.area.setStyle({fillOpacity: g===id ? .22 : .04, weight: g===id ? 2.5 : 1}));
+    if(o) map.flyTo(o.view.center, o.view.zoom, {duration:.9});
+  }
+  function overview(){ if(map){ Object.values(groups).forEach(v=>v.area.setStyle({fillOpacity:.08,weight:1.5})); map.flyTo([-23.61,-46.6],11,{duration:.9}); } }
+  $$(".split-opt", s).forEach(b=>{
+    b.addEventListener("mouseenter", ()=>focus(b.dataset.opt));
+    b.addEventListener("focus", ()=>focus(b.dataset.opt));
+  });
+  $(".split", s).addEventListener("mouseleave", ()=>{ const sel=answers[q.id]?.id; sel ? focus(sel) : overview(); });
+  return {
+    show(){ init(); if(map){ setTimeout(()=>{ map.invalidateSize(); const sel=answers[q.id]?.id; if(sel) focus(sel); },350); } }
+  };
+})();
+
+/* ============================================================
+   EFEITOS: tilt nas fotos, leitura da planta, glow do cursor
+   ============================================================ */
+$$(".g-item").forEach(card=>{
+  card.addEventListener("mousemove", e=>{
+    const r=card.getBoundingClientRect(), x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+    card.style.transform=`perspective(900px) rotateY(${(x-.5)*10}deg) rotateX(${(.5-y)*10}deg) translateY(-4px)`;
+    card.style.setProperty("--mx",x*100+"%"); card.style.setProperty("--my",y*100+"%");
+  });
+  card.addEventListener("mouseleave", ()=>card.style.transform="");
+});
+$$(".plan").forEach(pl=>{
+  const out=$(".readout",pl);
+  $$(".zone",pl).forEach(z=>{
+    z.addEventListener("mouseenter",()=>{ out.textContent=`${z.dataset.n}: ${z.dataset.d}`; });
+    z.addEventListener("mouseleave",()=>{ out.textContent="Passe o mouse na planta"; });
+  });
+});
+const glow=$(".cursor-glow");
+addEventListener("pointermove", e=>{ glow.style.left=e.clientX+"px"; glow.style.top=e.clientY+"px"; }, {passive:true});
+
+/* ============================================================
+   LIGHTBOX
+   ============================================================ */
+const lb=$("#lightbox");
+function closeLightbox(){ lb.classList.remove("open"); }
+deck.addEventListener("click", e=>{
+  const z=e.target.closest(".zoom"); if(!z) return;
+  e.stopPropagation();
+  $("img",lb).src=z.dataset.zoom; $("img",lb).alt=z.dataset.cap; $("p",lb).textContent=z.dataset.cap;
+  lb.classList.add("open");
+});
+lb.addEventListener("click", e=>{ if(e.target===lb || e.target.closest(".x")) closeLightbox(); });
+
+/* ============================================================
+   RESULTADO
+   ============================================================ */
+function optOf(qid){
+  const q=QUESTIONS.find(x=>x.id===qid), a=answers[qid]; if(!a) return null;
+  if(q.type==="slider") return q.stops.find(s=>s.id===a.id);
+  return q.options.find(o=>o.id===a.id);
+}
+function buildResult(){
+  const city=optOf("cidade"), viz=optOf("vizinhanca"), mor=optOf("moradia");
+  const cityPart = {sp:"Paulistano", abc:"ABC"}[city?.id] || "Indeciso";
+  const vibePart = {colado:"no agito", perto:"bem conectado", meio:"no equilíbrio", tranquilo:"no sossego"}[viz?.id] || "em qualquer canto";
+  $("#resTitle").innerHTML = `Modo <em>${cityPart}</em><br>${vibePart}`;
+  const labels = {cidade:"Cidade",vizinhanca:"Vizinhança",moradia:"Moradia",studio:"Studio",sala:"Sala",quarto:"Quarto",cozinha:"Cozinha",banheiro:"Banheiro",planta:"Planta"};
+  $("#resSummary").innerHTML = QUESTIONS.map(q=>{
+    const o=optOf(q.id);
+    return `<div><span>${labels[q.id]}</span>${o?`<span>${esc(o.label)}</span>`:`<span class="empty">sem resposta</span>`}</div>`;
+  }).join("");
+  const pics = ["studio","sala","quarto","cozinha","banheiro","cidade","moradia"].map(id=>{ const o=optOf(id); return o?.img ? {img:o.img, label:labels[id]} : null; }).filter(Boolean);
+  const rots=[-2,1.5,-1,2,-1.5,1,-2];
+  $("#collage").innerHTML = pics.length
+    ? pics.map((p,i)=>`<div class="c ${i===0?"big":""}" style="--r:${rots[i]}deg;transition-delay:${.15+i*.08}s">${img(p.img,p.label)}<span>${p.label}</span></div>`).join("")
+    : `<div class="c big" style="grid-column:span 3"><div class="fallback" style="height:100%">Responda algumas perguntas para montar o mural 🏠</div></div>`;
+}
+$("#restart").onclick=()=>{ answers={}; save(); QUESTIONS.forEach(q=>paintSelection(q.id)); dots.forEach(d=>d.classList.remove("answered")); $$(".vibe-confirm").forEach(b=>b.classList.remove("selected")); go(0); toast("Quiz zerado"); };
+$("#copyRes").onclick=async()=>{
+  const txt = "Meu quiz da mudança:\n" + QUESTIONS.map(q=>{ const o=optOf(q.id); return `• ${q.kicker.split("· ")[1]}: ${o?o.label:"—"}`; }).join("\n");
+  try{ await navigator.clipboard.writeText(txt); toast("Resultado copiado!"); }catch(e){ toast("Não foi possível copiar"); }
+};
+
+/* ============================================================
+   TOAST + INÍCIO
+   ============================================================ */
+let tt;
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),1600); }
+
+const start = parseInt(location.hash.slice(1),10);
+current = -1;
+go(Number.isFinite(start) ? start-1 : 0);
+addEventListener("hashchange", ()=>{ const n=parseInt(location.hash.slice(1),10); if(Number.isFinite(n) && n-1!==current) go(n-1); });
+</script>
+</body>
+</html>
